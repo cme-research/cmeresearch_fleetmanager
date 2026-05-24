@@ -37,6 +37,8 @@ services:
         condition: service_healthy
     ports:
       - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - staticfiles:/app/staticfiles
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
@@ -81,5 +83,23 @@ services:
       - NET_RAW
     command: python manage.py run_watchdog
 
+  # TLS reverse proxy. Opt in with `docker compose --profile tls up`.
+  # Drop your cert + key in deploy/nginx/certs/ as fullchain.pem / privkey.pem
+  # before starting. For dev use a self-signed cert (see deploy/README.md).
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf.example:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - staticfiles:/static:ro
+
 volumes:
   pgdata:
+  staticfiles:
