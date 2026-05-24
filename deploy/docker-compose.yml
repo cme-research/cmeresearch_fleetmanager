@@ -6,6 +6,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-fleetmanager}
       POSTGRES_USER: ${POSTGRES_USER:-fleetmanager}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Bind to the host's loopback only so the watchdog (which runs in
+    # network_mode: host, see below) can reach Postgres at 127.0.0.1:5432
+    # without exposing the DB to the LAN.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -39,6 +44,42 @@ services:
                 --bind 0.0.0.0:8000
                 --workers 3
                 --access-logfile - --error-logfile -"
+
+  # Watchdog runs in network_mode: host so it shares the host's routing table.
+  # The host is expected to be the VPN client (WireGuard / OpenVPN on the
+  # host OS); the watchdog then reaches AGVs over the host's VPN tunnel.
+  # See deploy/README.md for alternatives (sidecar VPN container).
+  watchdog:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: cmeresearch/fleetmanager:dev
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DJANGO_SETTINGS_MODULE: fleetmanager.settings.prod
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      # network_mode: host means we hit Postgres via the host's loopback,
+      # where the db container has published 5432.
+      DATABASE_URL: postgres://${POSTGRES_USER:-fleetmanager}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-fleetmanager}
+      TIME_ZONE: ${TIME_ZONE:-UTC}
+      PROBE_INTERVAL_S: ${PROBE_INTERVAL_S:-60}
+      PROBE_TIMEOUT_MS: ${PROBE_TIMEOUT_MS:-2000}
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    # icmplib needs to open ICMP sockets. Either:
+    #   (a) allow unprivileged ICMP via the kernel sysctl (preferred), or
+    #   (b) grant NET_RAW capability (also works on older kernels).
+    sysctls:
+      net.ipv4.ping_group_range: "0 65535"
+    cap_add:
+      - NET_RAW
+    command: python manage.py run_watchdog
 
 volumes:
   pgdata:
