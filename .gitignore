@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+staticfiles/
+media/
+deploy/docker-compose.override.yml
+deploy/nginx/certs/
+.claude/

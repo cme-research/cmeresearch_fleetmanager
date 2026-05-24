@@ -1,0 +1,20 @@
+# Copy to docker-compose.override.yml for local dev.
+# Mounts the source tree into the container so edits hot-reload.
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: base
+    environment:
+      DJANGO_SETTINGS_MODULE: fleetmanager.settings.dev
+      DJANGO_DEBUG: "True"
+    volumes:
+      - ..:/app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
