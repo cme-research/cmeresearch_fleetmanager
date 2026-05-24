@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Delete {{ object.name }} · cmeresearch fleetmanager{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <h1 class="h3 mb-3">Delete AGV</h1>
+    <p>Are you sure you want to delete <strong>{{ object.name }}</strong>?
+       All uptime samples for this AGV will also be deleted.</p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger">Delete</button>
+      <a href="{% url 'core:agv_edit' object.uuid %}" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

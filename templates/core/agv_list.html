@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Fleet overview · cmeresearch fleetmanager{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Fleet overview</h1>
+  <a href="{% url 'core:agv_add' %}" class="btn btn-primary">Add AGV</a>
+</div>
+
+{% if agvs %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th style="width: 1%"></th>
+        <th>Name</th>
+        <th>VPN IP</th>
+        <th>Probe</th>
+        <th>Last seen</th>
+        <th>Enabled</th>
+        <th class="text-end">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for agv in agvs %}
+      <tr>
+        <td>
+          <span class="d-inline-block rounded-circle"
+                style="width: 12px; height: 12px;
+                       background: {% if agv.last_state == 'online' %}#28a745
+                                  {% elif agv.last_state == 'offline' %}#dc3545
+                                  {% else %}#adb5bd{% endif %};"
+                title="{{ agv.get_last_state_display }}"></span>
+        </td>
+        <td>
+          <a href="{% url 'core:agv_detail' agv.uuid %}">{{ agv.name }}</a>
+          <div class="small text-muted">{{ agv.uuid }}</div>
+        </td>
+        <td>{{ agv.vpn_ip|default:"—" }}</td>
+        <td>
+          {{ agv.get_probe_method_display }}
+          {% if agv.probe_port %}<span class="text-muted">:{{ agv.probe_port }}</span>{% endif %}
+        </td>
+        <td>
+          {% if agv.last_seen_at %}
+            {{ agv.last_seen_at|timesince }} ago
+          {% else %}
+            <span class="text-muted">never</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if agv.enabled %}
+            <span class="badge bg-success">yes</span>
+          {% else %}
+            <span class="badge bg-secondary">paused</span>
+          {% endif %}
+        </td>
+        <td class="text-end">
+          <a href="{% url 'core:agv_edit' agv.uuid %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+          <a href="{% url 'core:agv_delete' agv.uuid %}" class="btn btn-sm btn-outline-danger">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No AGVs yet. <a href="{% url 'core:agv_add' %}">Add the first one</a>.
+</div>
+{% endif %}
+{% endblock %}
