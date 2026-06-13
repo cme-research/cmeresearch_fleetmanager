@@ -1,0 +1,15 @@
+.git
+.gitignore
+.claude
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+db.sqlite3
+staticfiles
+PLAN.md
+README.md
+LICENSE

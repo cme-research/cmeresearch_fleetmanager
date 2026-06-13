@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}{{ agv.name }} · cmeresearch fleetmanager{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h1 class="h3 m-0 d-flex align-items-center gap-2">
+      <span class="d-inline-block rounded-circle"
+            style="width: 14px; height: 14px;
+                   background: {% if agv.last_state == 'online' %}#28a745
+                              {% elif agv.last_state == 'offline' %}#dc3545
+                              {% else %}#adb5bd{% endif %};"></span>
+      {{ agv.name }}
+    </h1>
+    <div class="text-muted small">{{ agv.uuid }}</div>
+  </div>
+  <div>
+    <a href="{% url 'core:agv_edit' agv.uuid %}" class="btn btn-outline-secondary">Edit</a>
+    <a href="{% url 'core:index' %}" class="btn btn-outline-secondary">Back</a>
+  </div>
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Current state</div>
+      <div class="h4 m-0">{{ agv.get_last_state_display }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Last seen</div>
+      <div class="h6 m-0">
+        {% if agv.last_seen_at %}{{ agv.last_seen_at|timesince }} ago{% else %}never{% endif %}
+      </div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Last RTT</div>
+      <div class="h6 m-0">
+        {% if agv.last_response_ms %}{{ agv.last_response_ms|floatformat:1 }} ms{% else %}—{% endif %}
+      </div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small">Uptime (selected range)</div>
+      <div class="h6 m-0" id="uptime-pct">…</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <strong>Daily uptime (last 30 days)</strong>
+  </div>
+  <div class="card-body">
+    <canvas id="daily-chart" height="80"></canvas>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <strong>Uptime timeline</strong>
+    <div class="btn-group btn-group-sm" role="group" id="range-buttons">
+      <button type="button" class="btn btn-outline-primary active" data-range="1d">1d</button>
+      <button type="button" class="btn btn-outline-primary" data-range="7d">7d</button>
+      <button type="button" class="btn btn-outline-primary" data-range="30d">30d</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <canvas id="uptime-chart" height="80"></canvas>
+    <div id="chart-status" class="text-muted small mt-2"></div>
+  </div>
+</div>
+
+{% if recent_samples %}
+<div class="card mb-4">
+  <div class="card-header"><strong>Recent samples</strong></div>
+  <div class="table-responsive">
+    <table class="table table-sm m-0">
+      <thead>
+        <tr><th>Time</th><th>State</th><th>RTT</th><th>Source</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        {% for s in recent_samples %}
+        <tr>
+          <td>{{ s.timestamp }}</td>
+          <td>
+            {% if s.is_online %}
+              <span class="badge bg-success">online</span>
+            {% else %}
+              <span class="badge bg-danger">offline</span>
+            {% endif %}
+          </td>
+          <td>{% if s.response_ms %}{{ s.response_ms|floatformat:1 }} ms{% else %}—{% endif %}</td>
+          <td>{{ s.get_source_display }}</td>
+          <td>{{ s.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<dl class="row">
+  <dt class="col-sm-3">VPN IP</dt>
+  <dd class="col-sm-9">{{ agv.vpn_ip|default:"—" }}</dd>
+  <dt class="col-sm-3">Hostname</dt>
+  <dd class="col-sm-9">{{ agv.hostname|default:"—" }}</dd>
+  <dt class="col-sm-3">Probe</dt>
+  <dd class="col-sm-9">
+    {{ agv.get_probe_method_display }}{% if agv.probe_port %} port {{ agv.probe_port }}{% endif %}
+  </dd>
+  <dt class="col-sm-3">Enabled</dt>
+  <dd class="col-sm-9">{{ agv.enabled|yesno:"yes,paused" }}</dd>
+  {% if agv.description %}
+    <dt class="col-sm-3">Description</dt>
+    <dd class="col-sm-9">{{ agv.description|linebreaks }}</dd>
+  {% endif %}
+</dl>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+(function() {
+  const samplesUrl = "{% url 'core:agv_samples_json' agv.uuid %}";
+  const ctx = document.getElementById('uptime-chart').getContext('2d');
+  const statusEl = document.getElementById('chart-status');
+  const uptimeEl = document.getElementById('uptime-pct');
+
+  let chart = null;
+
+  async function load(range) {
+    statusEl.textContent = 'loading…';
+    const resp = await fetch(`${samplesUrl}?range=${encodeURIComponent(range)}`,
+                             {credentials: 'same-origin'});
+    if (!resp.ok) {
+      statusEl.textContent = `error: ${resp.status}`;
+      return;
+    }
+    const data = await resp.json();
+    statusEl.textContent =
+      `${data.total} samples · ${data.online} online · range ${data.from} → ${data.to}`;
+    uptimeEl.textContent =
+      data.uptime_pct === null ? '—' : `${data.uptime_pct.toFixed(1)} %`;
+
+    const points = data.samples.map(s => ({x: s.t, y: s.online}));
+    const dataset = {
+      label: 'online',
+      data: points,
+      stepped: true,
+      borderColor: '#28a745',
+      backgroundColor: 'rgba(40,167,69,0.15)',
+      fill: true,
+      pointRadius: 0,
+      borderWidth: 1.5,
+    };
+
+    if (chart) {
+      chart.data.datasets = [dataset];
+      chart.update();
+    } else {
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {datasets: [dataset]},
+        options: {
+          parsing: false,
+          animation: false,
+          scales: {
+            x: {type: 'time', time: {tooltipFormat: 'yyyy-MM-dd HH:mm'}},
+            y: {min: -0.05, max: 1.05,
+                ticks: {stepSize: 1,
+                        callback: v => v === 1 ? 'online' : v === 0 ? 'offline' : ''}},
+          },
+          plugins: {legend: {display: false}},
+        },
+      });
+    }
+  }
+
+  document.getElementById('range-buttons').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-range]');
+    if (!btn) return;
+    document.querySelectorAll('#range-buttons .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    load(btn.dataset.range);
+  });
+
+  load('1d');
+})();
+
+(function() {
+  const dailyUrl = "{% url 'core:agv_daily_json' agv.uuid %}?days=30";
+  const ctx = document.getElementById('daily-chart').getContext('2d');
+  fetch(dailyUrl, {credentials: 'same-origin'})
+    .then(r => r.json())
+    .then(data => {
+      const labels = data.points.map(p => p.date);
+      const values = data.points.map(p => p.uptime_pct);
+      const colors = values.map(v =>
+        v === null ? '#e9ecef' :
+        v >= 99 ? '#28a745' :
+        v >= 95 ? '#7cc674' :
+        v >= 80 ? '#f0ad4e' :
+        v >= 50 ? '#e07a5f' : '#dc3545');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {labels, datasets: [{label: 'uptime %', data: values, backgroundColor: colors}]},
+        options: {
+          animation: false,
+          scales: {
+            y: {min: 0, max: 100, ticks: {callback: v => v + '%'}},
+            x: {ticks: {maxRotation: 0, autoSkip: true, maxTicksLimit: 10}},
+          },
+          plugins: {
+            legend: {display: false},
+            tooltip: {callbacks: {label: ctx => ctx.parsed.y === null ? 'no data' : ctx.parsed.y.toFixed(1) + '%'}},
+          },
+        },
+      });
+    });
+})();
+</script>
+{% endblock %}

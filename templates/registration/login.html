@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in · cmeresearch fleetmanager{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card">
+      <div class="card-body">
+        <h1 class="card-title h4 mb-3">Sign in</h1>
+        {% if form.errors %}
+          <div class="alert alert-danger">Invalid username or password.</div>
+        {% endif %}
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label for="id_username" class="form-label">Username</label>
+            <input type="text" name="username" id="id_username" class="form-control" autofocus required>
+          </div>
+          <div class="mb-3">
+            <label for="id_password" class="form-label">Password</label>
+            <input type="password" name="password" id="id_password" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Sign in</button>
+          <input type="hidden" name="next" value="{{ next }}">
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

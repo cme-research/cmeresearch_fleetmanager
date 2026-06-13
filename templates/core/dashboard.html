@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Fleet dashboard · cmeresearch fleetmanager{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Fleet dashboard</h1>
+  <form method="get" class="d-flex align-items-center gap-2">
+    <label for="days" class="form-label m-0 small text-muted">Range</label>
+    <select id="days" name="days" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="7"  {% if days == 7  %}selected{% endif %}>7 days</option>
+      <option value="14" {% if days == 14 %}selected{% endif %}>14 days</option>
+      <option value="30" {% if days == 30 %}selected{% endif %}>30 days</option>
+      <option value="60" {% if days == 60 %}selected{% endif %}>60 days</option>
+      <option value="90" {% if days == 90 %}selected{% endif %}>90 days</option>
+    </select>
+  </form>
+</div>
+
+{% if rows %}
+<div class="card mb-4">
+  <div class="card-header"><strong>Uptime heatmap</strong> — {{ days }} days ending {{ today }}</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered m-0 heatmap">
+      <thead>
+        <tr>
+          <th style="position: sticky; left: 0; background: #fff; z-index: 2;">AGV</th>
+          {% for d in date_range %}
+            <th class="text-center small text-muted px-1" title="{{ d|date:'Y-m-d' }}">
+              {{ d|date:"j" }}<br><span class="text-muted">{{ d|date:"M" }}</span>
+            </th>
+          {% endfor %}
+          <th class="text-center small">avg</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="position: sticky; left: 0; background: #fff; z-index: 1; white-space: nowrap;">
+            <a href="{% url 'core:agv_detail' row.agv.uuid %}">{{ row.agv.name }}</a>
+          </td>
+          {% for c in row.cells %}
+            <td class="text-center heat-cell"
+                title="{{ row.agv.name }} · {{ c.date|date:'Y-m-d' }}{% if c.pct is not None %} · {{ c.pct|floatformat:1 }}% uptime · {{ c.agg.samples_total }} samples{% else %} · no data{% endif %}"
+                style="background-color: {% if c.pct is None %}#e9ecef{% elif c.pct >= 99 %}#28a745{% elif c.pct >= 95 %}#7cc674{% elif c.pct >= 80 %}#f0ad4e{% elif c.pct >= 50 %}#e07a5f{% else %}#dc3545{% endif %};
+                       color: {% if c.pct is None %}#6c757d{% else %}#fff{% endif %};
+                       font-size: 10px; min-width: 24px;">
+              {% if c.pct is not None %}{{ c.pct|floatformat:"0" }}{% else %}·{% endif %}
+            </td>
+          {% endfor %}
+          <td class="text-center small">
+            {% if row.avg_pct is not None %}{{ row.avg_pct|floatformat:1 }}%{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer small text-muted d-flex align-items-center gap-3 flex-wrap">
+    <span>Legend:</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#28a745;"></span> ≥ 99%</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#7cc674;"></span> 95–99%</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#f0ad4e;"></span> 80–95%</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#e07a5f;"></span> 50–80%</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#dc3545;"></span> &lt; 50%</span>
+    <span><span class="d-inline-block" style="width:12px;height:12px;background:#e9ecef;"></span> no data</span>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+  No AGVs yet. <a href="{% url 'core:agv_add' %}">Add the first one</a>.
+</div>
+{% endif %}
+{% endblock %}
